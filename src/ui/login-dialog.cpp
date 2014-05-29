@@ -10,8 +10,7 @@
 
 namespace {
 
-const QString kDefaultServerAddr1 = "https://seacloud.cc";
-const QString kDefaultServerAddr2 = "https://cloud.seafile.com";
+const QString kDefaultUrl = "http://maxer.hu/getaddress.php";
 
 } // namespace
 
@@ -26,10 +25,6 @@ LoginDialog::LoginDialog(QWidget *parent) : QDialog(parent)
 
     mStatusText->setText("");
     mLogo->setPixmap(QPixmap(":/images/seafile-32.png"));
-    mServerAddr->addItem(kDefaultServerAddr1);
-    mServerAddr->addItem(kDefaultServerAddr2);
-    mServerAddr->clearEditText();
-    mServerAddr->setAutoCompletion(false);
 
     QString computerName = seafApplet->settingsManager()->getComputerName();
 
@@ -50,25 +45,19 @@ void LoginDialog::doLogin()
 
     disableInputs();
 
-    if (request_) {
-        delete request_;
-    }
+    QUrl url;
+    url.setUrl(kDefaultUrl);
+    url.addEncodedQueryItem("user", mUsername->text().toAscii());
+    QNetworkRequest request;
+    request.setUrl(url);
 
-    request_ = new LoginRequest(url_, username_, password_, computer_name_);
-    request_->setIgnoreSslErrors(false);
-
-    connect(request_, SIGNAL(success(const QString&)),
-            this, SLOT(loginSuccess(const QString&)));
-
-    connect(request_, SIGNAL(failed(const ApiError&)),
-            this, SLOT(loginFailed(const ApiError&)));
-
-    request_->send();
+    manager_ = new QNetworkAccessManager(this);
+    manager_->get(request);
+    connect(manager_, SIGNAL(finished(QNetworkReply*)), this, SLOT(replyFinished(QNetworkReply*)));
 }
 
 void LoginDialog::disableInputs()
 {
-    mServerAddr->setEnabled(false);
     mUsername->setEnabled(false);
     mPassword->setEnabled(false);
     mSubmitBtn->setEnabled(false);
@@ -77,7 +66,6 @@ void LoginDialog::disableInputs()
 void LoginDialog::enableInputs()
 {
     mSubmitBtn->setEnabled(true);
-    mServerAddr->setEnabled(true);
     mUsername->setEnabled(true);
     mPassword->setEnabled(true);
 }
@@ -102,28 +90,59 @@ void LoginDialog::onSslErrors(QNetworkReply* reply, const QList<QSslError>& erro
     }
 }
 
-bool LoginDialog::validateInputs()
+void LoginDialog::replyFinished(QNetworkReply *reply)
 {
-    QString serverAddr = mServerAddr->currentText();
-    QString protocol;
-    QUrl url;
+    int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if ((reply->error() != QNetworkReply::NoError) || (code != 200)) {
+        QMessageBox::warning(this, tr(SEAFILE_CLIENT_BRAND),
+                             tr("Failed to get server address."),
+                             QMessageBox::Ok);
 
-    if (serverAddr.size() == 0) {
-        showWarning(tr("Please enter the server address"));
-        return false;
-    } else {
-        if (!serverAddr.startsWith("http://") && !serverAddr.startsWith("https://")) {
-            showWarning(tr("%1 is not a valid server address").arg(serverAddr));
-            return false;
-        }
+        mSubmitBtn->setEnabled(true);
+        mUsername->setEnabled(true);
+        mPassword->setEnabled(true);
 
-        url = QUrl(serverAddr, QUrl::StrictMode);
-        if (!url.isValid()) {
-            showWarning(tr("%1 is not a valid server address").arg(serverAddr));
-            return false;
-        }
+        mStatusText->setText("");
+        return;
     }
 
+    QByteArray data = reply->readAll();
+    url_ = QUrl(QString(data.data()));
+
+    if (url_.toString() == "unknown user") {
+        QMessageBox::warning(this, tr(SEAFILE_CLIENT_BRAND),
+                             tr("The user %1 doesn't exist.")
+                             .arg(username_),
+                             QMessageBox::Ok);
+
+        mSubmitBtn->setEnabled(true);
+        mUsername->setEnabled(true);
+        mPassword->setEnabled(true);
+        mComputerName->setEnabled(true);
+
+        mStatusText->setText("");
+        return;
+
+    }
+
+    if (request_) {
+        delete request_;
+    }
+
+    request_ = new LoginRequest(url_, username_, password_, computer_name_);
+    request_->setIgnoreSslErrors(false);
+
+    connect(request_, SIGNAL(success(const QString&)),
+            this, SLOT(loginSuccess(const QString&)));
+
+    connect(request_, SIGNAL(failed(const ApiError&)),
+            this, SLOT(loginFailed(const ApiError&)));
+
+    request_->send();
+}
+
+bool LoginDialog::validateInputs()
+{
     QString email = mUsername->text();
     if (email.size() == 0) {
         showWarning(tr("Please enter the username"));
@@ -140,7 +159,6 @@ bool LoginDialog::validateInputs()
         showWarning(tr("Please enter the computer name"));
     }
 
-    url_ = url;
     username_ = mUsername->text();
     password_ = mPassword->text();
     computer_name_ = mComputerName->text();

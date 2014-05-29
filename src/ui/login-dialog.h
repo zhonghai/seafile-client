@@ -25,6 +25,7 @@ private slots:
     void doLogin();
     void loginSuccess(const QString& token);
     void loginFailed(const ApiError& error);
+    void replyFinished(QNetworkReply* reply);
 
 private:
     Q_DISABLE_COPY(LoginDialog);
@@ -42,6 +43,7 @@ private:
     QString password_;
     QString computer_name_;
     LoginRequest *request_;
+    QNetworkAccessManager *manager_;
 };
 
 #endif // SEAFILE_CLIENT_LOGIN_DIALOG_H
