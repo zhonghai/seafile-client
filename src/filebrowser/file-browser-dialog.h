@@ -42,6 +42,7 @@ public:
     ~FileBrowserDialog();
 
     friend class FileTableView;
+    friend class FileTableModel;
 
 private slots:
     void onGetDirentsSuccess(const QList<SeafDirent>& dirents);

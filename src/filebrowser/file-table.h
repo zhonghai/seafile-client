@@ -80,6 +80,8 @@ public:
 private:
     Q_DISABLE_COPY(FileTableModel)
 
+    QString getTransferProgress(const SeafDirent& dirent) const;
+
     QList<SeafDirent> dirents_;
 
     int name_column_width_;

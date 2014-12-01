@@ -211,7 +211,7 @@ void FileBrowserDialog::createFileTable()
 {
     loading_view_ = new LoadingView;
     table_view_ = new FileTableView(repo_, this);
-    table_model_ = new FileTableModel();
+    table_model_ = new FileTableModel(this);
     table_view_->setModel(table_model_);
 
     connect(table_view_, SIGNAL(dropFile(const QString&)),

@@ -38,15 +38,17 @@ public:
                                       const QString& path,
                                       const QString& local_path);
 
+    QString getDownloadProgress(const QString& repo_id,
+                                const QString& path);
+
 private slots:
-    void onFileDownloadFinished(bool success);
+    void onDownloadTaskFinished(bool success);
 
 private:
-    QQueue<FileDownloadTask *> download_tasks_;
+    void startDownloadTask(FileDownloadTask *task);
 
-    static QThread *worker_thread_;
-
-    FileDownloadTask *current_task_;
+    FileDownloadTask *current_download_;
+    QQueue<FileDownloadTask *> pending_downloads_;
 };
 
 

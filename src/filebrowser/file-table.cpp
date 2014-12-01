@@ -5,9 +5,11 @@
 #include "seaf-dirent.h"
 #include "utils/utils-mac.h"
 
-#include "file-table.h"
 #include "file-browser-dialog.h"
 #include "data-mgr.h"
+#include "transfer-mgr.h"
+
+#include "file-table.h"
 
 namespace {
 
@@ -17,6 +19,7 @@ enum {
     FILE_COLUMN_MTIME,
     FILE_COLUMN_SIZE,
     FILE_COLUMN_KIND,
+    FILE_COLUMN_PROGRESS,
     FILE_MAX_COLUMN
 };
 
@@ -25,7 +28,7 @@ const int kDefaultColumnHeight = 40;
 const int kColumnIconSize = 28;
 const int kColumnIconAlign = 8;
 const int kColumnExtraAlign = 40;
-const int kDefaultColumnSum = kDefaultColumnWidth * 3 + kColumnIconSize + kColumnIconAlign + kColumnExtraAlign;
+const int kDefaultColumnSum = kDefaultColumnWidth * 4 + kColumnIconSize + kColumnIconAlign + kColumnExtraAlign;
 const int kFileNameColumnWidth = 200;
 
 } // namespace
@@ -319,9 +322,22 @@ QVariant FileTableModel::data(const QModelIndex & index, int role) const
       return dirent.isDir() ?
         tr("Folder") :
         tr("Document");
+    case FILE_COLUMN_PROGRESS:
+        return getTransferProgress(dirent);
     default:
       return QVariant();
     }
+}
+
+QString FileTableModel::getTransferProgress(const SeafDirent& dirent) const
+{
+    if (dirent.isDir()) {
+        return "";
+    }
+
+    FileBrowserDialog *dialog = static_cast<FileBrowserDialog*>(QObject::parent());
+    return TransferManager::instance()->getDownloadProgress(dialog->repo_.id,
+        ::pathJoin(dialog->current_path_, dirent.name));
 }
 
 QVariant FileTableModel::headerData(int section,
