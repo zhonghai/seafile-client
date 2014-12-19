@@ -37,6 +37,16 @@ double __mac_getScaleFactor() {
     return scaleFactor;
 }
 
+bool __mac_register_url_types() {
+    NSURL *itemURL = [[NSBundle mainBundle] bundleURL];
+    Boolean inUpdate = true;
+    CFURLRef URLToToggle = (CFURLRef)CFBridgingRetain(itemURL);
+    OSStatus status = LSRegisterURL(URLToToggle, inUpdate);
+    if (status)
+        qDebug("__mac_register_url_types failed, status %d", status);
+    return !status;
+}
+
 //TransformProcessType is not encouraged to use, aha
 //Sorry but not functional for OSX 10.7
 void __mac_setDockIconStyle(bool hidden) {

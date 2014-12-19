@@ -646,3 +646,12 @@ QString dumpSslErrors(const QList<QSslError> &errors)
     }
     return s;
 }
+
+bool registerURLTypes()
+{
+#ifdef Q_WS_MAC
+   return  __mac_register_url_types();
+#endif
+   return false;
+}
+

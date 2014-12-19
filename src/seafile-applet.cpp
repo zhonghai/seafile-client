@@ -184,6 +184,8 @@ void SeafileApplet::start()
 
     connect(daemon_mgr_, SIGNAL(daemonStarted()),
             this, SLOT(onDaemonStarted()));
+    if (!registerURLTypes())
+        qWarning("Unable to register URL Types");
 }
 
 void SeafileApplet::onDaemonStarted()
