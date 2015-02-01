@@ -8,22 +8,34 @@
 
 #import "FinderSync.h"
 #import "FinderSyncClient.h"
+#include <utility>
+#include <map>
+#include <algorithm>
 
-enum SyncState {
-    SYNC_STATE_DISABLED,
-    SYNC_STATE_WAITING,
-    SYNC_STATE_INIT,
-    SYNC_STATE_ING,
-    SYNC_STATE_DONE,
-    SYNC_STATE_ERROR,
-    SYNC_STATE_UNKNOWN,
-};
+#if !__has_feature(objc_arc)
+#error this file must be built with ARC support
+#endif
 
 @interface FinderSync ()
 
-@property(readwrite, nonatomic, strong) NSURL *seafileFolderURL;
-@property(readwrite, nonatomic, strong) FinderSyncClient *client;
+@property(readwrite, nonatomic, strong) NSTimer *timer;
 @end
+
+namespace {
+std::vector<LocalRepo> repos;
+std::map<std::string, std::pair<int, std::vector<NSURL *>>> observed_files;
+const NSArray *badgeIdentifiers = @[
+  @"DISABLED",
+  @"WAITING",
+  @"INIT",
+  @"ING",
+  @"DONE",
+  @"ERROR",
+  @"UNKNOWN"
+];
+constexpr double kGetWatchSetInterval = 5.0; // seconds
+FinderSyncClient *client_ = nullptr;
+} // anonymous namespace
 
 @implementation FinderSync
 
@@ -34,17 +46,13 @@ enum SyncState {
         [[NSBundle mainBundle] bundlePath], __TIME__);
 
   // Set up client
-  self.client = [[FinderSyncClient alloc] init];
-  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0),
-                                           ^{
-                                           [self.client getWatchSet];
-                                           });
-
-  [[NSNotificationCenter defaultCenter]
-      addObserver:self
-         selector:@selector(processNotification:)
-             name:kOnUpdateWatchSetNotification
-           object:self.client];
+  client_ = new FinderSyncClient(self);
+  self.timer =
+      [NSTimer scheduledTimerWithTimeInterval:kGetWatchSetInterval
+                                       target:self
+                                     selector:@selector(requestUpdateWatchSet)
+                                     userInfo:nil
+                                      repeats:YES];
 
   [FIFinderSyncController defaultController].directoryURLs = nil;
 
@@ -52,39 +60,91 @@ enum SyncState {
 }
 
 - (void)dealloc {
-  if (self.client) {
-    [self.client release];
-  }
-  [super dealloc];
+  delete client_;
   NSLog(@"%s unloaded ; compiled at %s", __PRETTY_FUNCTION__, __TIME__);
 }
 
 #pragma mark - Primary Finder Sync protocol methods
 
 - (void)beginObservingDirectoryAtURL:(NSURL *)url {
-  // The user is now seeing the container's contents.
-  // If they see it in more than one view at a time, we're only told once.
-  NSLog(@"beginObservingDirectoryAtURL:%@", url.filePathURL);
+  std::string filePath = url.fileSystemRepresentation;
+
+  // find the worktree dir in local repos
+  auto posOfLocalRepo = std::find_if(
+      repos.begin(), repos.end(), [&](decltype(repos)::value_type &repo) {
+        return 0 == strncmp(repo.worktree.c_str(), filePath.c_str(),
+                            repo.worktree.size());
+      });
+  if (posOfLocalRepo == repos.end()) {
+    return;
+  }
+
+  // insert the node based on worktree dir
+  auto posOfObservedFiles = observed_files.find(posOfLocalRepo->worktree);
+  if (posOfObservedFiles == observed_files.end()) {
+    auto value = decltype(observed_files)::value_type(
+        std::move(filePath),
+        decltype(observed_files)::mapped_type(posOfLocalRepo->status,
+                                              std::vector<NSURL *>()));
+    observed_files.emplace(std::move(value));
+  }
 }
 
 - (void)endObservingDirectoryAtURL:(NSURL *)url {
-  // The user is no longer seeing the container's contents.
-  NSLog(@"endObservingDirectoryAtURL:%@", url.filePathURL);
+  std::string filePath = url.fileSystemRepresentation;
+
+  // find the worktree dir in local repos
+  auto posOfLocalRepo = std::find_if(
+      repos.begin(), repos.end(), [&](decltype(repos)::value_type &repo) {
+        return 0 == strncmp(repo.worktree.c_str(), filePath.c_str(),
+                            repo.worktree.size());
+      });
+  if (posOfLocalRepo == repos.end())
+    return;
+
+  auto posOfObservedFiles = observed_files.find(posOfLocalRepo->worktree);
+  if (posOfObservedFiles == observed_files.end())
+    return;
+
+  // only remove the files under the current dir
+  auto &filelist = posOfObservedFiles->second.second;
+  filelist.erase(
+      std::remove_if(filelist.begin(), filelist.end(), [&](NSURL *fileurl) {
+        return [url isEqual:[fileurl URLByDeletingLastPathComponent]];
+      }), filelist.end());
 }
 
 - (void)requestBadgeIdentifierForURL:(NSURL *)url {
-  NSLog(@"requestBadgeIdentifierForURL:%@", url.filePathURL);
+  std::string filePath = url.fileSystemRepresentation;
 
-  // For demonstration purposes, this picks one of our two badges, or no badge
-  // at all, based on the filename.
-  NSInteger whichBadge = [url.filePathURL hash] % 3;
-  NSString *badgeIdentifier = @[ @"", @"Okay", @"Busy" ][whichBadge];
-  [[FIFinderSyncController defaultController] setBadgeIdentifier:badgeIdentifier
-                                                          forURL:url];
+  // find where we have it
+  auto pos = std::find_if(
+      observed_files.begin(), observed_files.end(),
+      [&](decltype(observed_files)::value_type &observed_file) {
+        return 0 == strncmp(observed_file.first.c_str(), filePath.c_str(),
+                            observed_file.first.size());
+
+      });
+
+  // if not found, unset it
+  if (pos == observed_files.end()) {
+    [[FIFinderSyncController defaultController] setBadgeIdentifier:@""
+                                                            forURL:url];
+    return;
+  }
+
+  // insert it into observed file list
+  pos->second.second.push_back(url);
+
+  // set badge image
+  [[FIFinderSyncController defaultController]
+      setBadgeIdentifier:badgeIdentifiers[pos->second.first]
+                  forURL:url];
 }
 
 #pragma mark - Menu and toolbar item support
 
+#if 0
 - (NSString *)toolbarItemName {
   return @"Seafile FinderSync";
 }
@@ -96,54 +156,135 @@ enum SyncState {
 - (NSImage *)toolbarItemImage {
   return [NSImage imageNamed:NSImageNameFolder];
 }
+#endif
 
 - (NSMenu *)menuForMenuKind:(FIMenuKind)whichMenu {
   // Produce a menu for the extension.
   NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
-  [menu addItemWithTitle:@"Example Menu Item"
-                  action:@selector(sampleAction:)
+  [menu addItemWithTitle:@"Get Seafile Share Link"
+                  action:@selector(shareLinkAction:)
            keyEquivalent:@""];
 
   return menu;
 }
 
-- (IBAction)sampleAction:(id)sender {
-  NSURL *target = [[FIFinderSyncController defaultController] targetedURL];
+- (IBAction)shareLinkAction:(id)sender {
   NSArray *items =
       [[FIFinderSyncController defaultController] selectedItemURLs];
+  if (![items count])
+    return;
+  NSURL *item = items.firstObject;
 
-  NSLog(@"sampleAction: menu item: %@, target = %@, items = ", [sender title],
-        [target filePathURL]);
-  [items enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
-    NSLog(@"    %@", [obj filePathURL]);
-  }];
+  std::string fileName = [item fileSystemRepresentation];
+
+  dispatch_async(
+      dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+        client_->doSharedLink(fileName.c_str());
+      });
 }
 
-- (void)processNotification:(NSNotification *)notification {
-  // notification.userInfo;
-  NSLog(@"update watch set event");
-  // Set up the directory we are syncing.
-  self.seafileFolderURL =
-      [NSURL fileURLWithPath:@"/Users/Shared/untitled folder"];
+- (void)requestUpdateWatchSet {
+  dispatch_async(
+      dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+        client_->getWatchSet();
+      });
+}
+
+- (void)updateWatchSet:(void *)new_repos_ptr {
+  std::vector<LocalRepo> new_repos =
+      std::move(*static_cast<std::vector<LocalRepo> *>(new_repos_ptr));
+  // update repos and observed_files
+  // 1. insert new dirs (done by beginObservingDirectoryAtURL auto)
+  // 2. remove inexisting dirs (done by endObservingDirectoryAtURL auto)
+  // 3. update old dirs and files
+
+  // update old dirs and files
+  for (auto &new_repo : new_repos) {
+    // if not conflicting, ignore
+    if (repos.end() == std::find_if(repos.begin(), repos.end(),
+                                    [&](decltype(repos)::value_type &repo) {
+                                      return new_repo.worktree == repo.worktree;
+                                    }))
+      continue;
+
+    // if not found, ignore
+    auto pos = observed_files.find(new_repo.worktree);
+    if (pos == observed_files.end())
+      continue;
+
+    // update old dirs status
+    if (pos->second.first == new_repo.status)
+      return;
+    int new_status = new_repo.status;
+    pos->second.first = new_status;
+
+    // update old files status
+    for (NSURL *url : pos->second.second) {
+      // set badge image
+      [[FIFinderSyncController defaultController]
+          setBadgeIdentifier:badgeIdentifiers[new_status]
+                      forURL:url];
+    }
+  }
+
+  repos = std::move(new_repos);
+  NSMutableArray *array = [NSMutableArray arrayWithCapacity:repos.size()];
+  for (const LocalRepo &repo : repos) {
+    [array addObject:[NSURL fileURLWithFileSystemRepresentation:repo.worktree
+                                                                    .c_str()
+                                                    isDirectory:TRUE
+                                                  relativeToURL:nil]];
+  }
 
   [FIFinderSyncController defaultController].directoryURLs =
-      [NSSet setWithObject:self.seafileFolderURL];
+      [NSSet setWithArray:array];
 
-  // Set up images for our badge identifiers. For demonstration purposes, this
-  // uses off-the-shelf images.
-  [[FIFinderSyncController defaultController]
-           setBadgeImage:[NSImage imageNamed:NSImageNameStatusAvailable]
-                   label:@"Status Okay"
-      forBadgeIdentifier:@"Okay"];
-  [[FIFinderSyncController defaultController]
-           setBadgeImage:[NSImage
-                             imageNamed:NSImageNameStatusPartiallyAvailable]
-                   label:@"Status Busy"
-      forBadgeIdentifier:@"Busy"];
-  [[FIFinderSyncController defaultController]
-           setBadgeImage:[NSImage imageNamed:NSImageNameStatusNone]
-                   label:@"Status Unavailable"
-      forBadgeIdentifier:@"Unavailable"];
+  // initialize the badge images
+  static BOOL initialized = FALSE;
+  if (!initialized) {
+    initialized = TRUE;
+
+    // Set up images for our badge identifiers. For demonstration purposes, this
+    // uses off-the-shelf images.
+    // DISABLED
+    [[FIFinderSyncController defaultController]
+             setBadgeImage:[NSImage imageNamed:NSImageNameStatusNone]
+                     label:@"Status Disabled"
+        forBadgeIdentifier:@"DISABLED"];
+    // WAITING,
+    [[FIFinderSyncController defaultController]
+             setBadgeImage:[NSImage
+                               imageNamed:NSImageNameStatusPartiallyAvailable]
+                     label:@"Status Waiting"
+        forBadgeIdentifier:@"WAITING"];
+    // INIT,
+    [[FIFinderSyncController defaultController]
+             setBadgeImage:[NSImage
+                               imageNamed:NSImageNameStatusPartiallyAvailable]
+                     label:@"Status Init"
+        forBadgeIdentifier:@"INIT"];
+    // ING,
+    [[FIFinderSyncController defaultController]
+             setBadgeImage:[NSImage
+                               imageNamed:NSImageNameStatusPartiallyAvailable]
+                     label:@"Status Ing"
+        forBadgeIdentifier:@"ING"];
+    // DONE,
+    [[FIFinderSyncController defaultController]
+             setBadgeImage:[NSImage imageNamed:NSImageNameStatusAvailable]
+                     label:@"Status Done"
+        forBadgeIdentifier:@"DONE"];
+    // ERROR,
+    [[FIFinderSyncController defaultController]
+             setBadgeImage:[NSImage imageNamed:NSImageNameCaution]
+                     label:@"Status Error"
+        forBadgeIdentifier:@"ERROR"];
+    // UNKNOWN,
+    [[FIFinderSyncController defaultController]
+             setBadgeImage:[NSImage imageNamed:NSImageNameStatusNone]
+                     label:@"Status Unknown"
+        forBadgeIdentifier:@"UNKOWN"];
+  }
 }
 
 @end
