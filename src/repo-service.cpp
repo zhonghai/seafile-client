@@ -42,16 +42,19 @@ void RepoService::stop()
     refresh_timer_->stop();
 }
 
-void RepoService::refresh()
+void RepoService::refresh(const Account *account)
 {
     if (in_refresh_) {
         return;
     }
 
-    const std::vector<Account>& accounts = seafApplet->accountManager()->accounts();
-    if (accounts.empty()) {
-        in_refresh_ = false;
-        return;
+    if (!account) {
+        const std::vector<Account>& accounts = seafApplet->accountManager()->accounts();
+        if (accounts.empty()) {
+            in_refresh_ = false;
+            return;
+        }
+        account = &accounts.front();
     }
 
     in_refresh_ = true;
@@ -60,7 +63,7 @@ void RepoService::refresh()
         delete list_repo_req_;
     }
 
-    list_repo_req_ = new ListReposRequest(accounts[0]);
+    list_repo_req_ = new ListReposRequest(*account);
 
     connect(list_repo_req_, SIGNAL(success(const std::vector<ServerRepo>&)),
             this, SLOT(onRefreshSuccess(const std::vector<ServerRepo>&)));
@@ -86,23 +89,23 @@ void RepoService::onRefreshFailed(const ApiError& error)
     emit refreshFailed(error);
 }
 
-void RepoService::refresh(bool force)
+void RepoService::refresh(bool force, const Account *account)
 {
     if (!force || !in_refresh_) {
-        refresh();
+        refresh(account);
         return;
     }
 
     // Abort the current request and send another
     in_refresh_ = false;
-    refresh();
+    refresh(account);
 }
 
 ServerRepo
 RepoService::getRepo(const QString& repo_id) const
 {
-    int i, n = server_repos_.size();
-    for (i = 0; i < n; i++) {
+    int n = server_repos_.size();
+    for (unsigned i = 0; i < n; i++) {
         ServerRepo repo = server_repos_[i];
         if (repo.id == repo_id) {
             return repo;

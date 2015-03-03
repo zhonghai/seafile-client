@@ -111,11 +111,28 @@ private:
     bool read_only_;
 };
 
+class GetRepoRequest : public SeafileApiRequest {
+    Q_OBJECT
+
+public:
+    explicit GetRepoRequest(const Account& account, const QString &repoid);
+
+protected slots:
+    void requestSuccess(QNetworkReply& reply);
+
+signals:
+    void success(const ServerRepo& repo);
+
+private:
+    Q_DISABLE_COPY(GetRepoRequest)
+
+};
+
 class CreateRepoRequest : public SeafileApiRequest {
     Q_OBJECT
 
 public:
-    explicit CreateRepoRequest(const Account& account, QString &name, QString &desc, QString &passwd);
+    explicit CreateRepoRequest(const Account& account, const QString &name, const QString &desc, const QString &passwd);
 
 protected slots:
     void requestSuccess(QNetworkReply& reply);
@@ -125,6 +142,23 @@ signals:
 
 private:
     Q_DISABLE_COPY(CreateRepoRequest)
+
+};
+
+class CreateSubrepoRequest : public SeafileApiRequest {
+    Q_OBJECT
+
+public:
+    explicit CreateSubrepoRequest(const Account& account, const QString &name, const QString &repoid , const QString &path, const QString &passwd);
+
+protected slots:
+    void requestSuccess(QNetworkReply& reply);
+
+signals:
+    void success(const QString& sub_repoid);
+
+private:
+    Q_DISABLE_COPY(CreateSubrepoRequest)
 
 };
 

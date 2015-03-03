@@ -11,6 +11,7 @@ class QTimer;
 
 class ApiError;
 class ListReposRequest;
+class Account;
 
 class RepoService : public QObject {
     SINGLETON_DEFINE(RepoService)
@@ -23,14 +24,14 @@ public:
 
     ServerRepo getRepo(const QString& repo_id) const;
 
-    void refresh(bool force);
+    void refresh(bool force, const Account *account);
 
     void openLocalFile(const QString& repo_id,
                        const QString& path_in_repo,
                        QWidget *dialog_parent=0);
 
 public slots:
-    void refresh();
+    void refresh(const Account *account = NULL);
 
 private slots:
     void onRefreshSuccess(const std::vector<ServerRepo>& repos);

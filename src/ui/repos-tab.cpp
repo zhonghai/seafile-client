@@ -143,7 +143,7 @@ void ReposTab::refresh()
 {
     filter_text_->clear();
     showLoadingView();
-    RepoService::instance()->refresh(true);
+    RepoService::instance()->refresh(true, NULL);
 }
 
 void ReposTab::startRefresh()

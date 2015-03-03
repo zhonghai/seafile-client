@@ -15,6 +15,8 @@ template<typename Key> class QList;
 
 class SeafileApiRequest;
 class GetDirentsRequest;
+class GetRepoRequest;
+class CreateSubrepoRequest;
 class DirentsCache;
 class FileCacheDB;
 class FileUploadTask;
@@ -93,6 +95,8 @@ public:
     static QString getLocalCacheFilePath(const QString& repo_id,
                                          const QString& path);
 
+    void createSubrepo(const QString &name, const QString& repo_id, const QString &path, const QString &password);
+
 signals:
     void getDirentsSuccess(const QList<SeafDirent>& dirents);
     void getDirentsFailed(const ApiError& error);
@@ -115,6 +119,9 @@ signals:
     void moveDirentsSuccess();
     void moveDirentsFailed(const ApiError& error);
 
+    void createSubrepoSuccess(const ServerRepo& repo);
+    void createSubrepoFailed(const ApiError& error);
+
 private slots:
     void onGetDirentsSuccess(const QList<SeafDirent>& dirents);
     void onFileUploadFinished(bool success);
@@ -126,6 +133,9 @@ private slots:
     void onCopyDirentsSuccess();
     void onMoveDirentsSuccess();
 
+    void onCreateSubrepoSuccess(const QString& new_repoid);
+    void onCreateSubrepoRefreshSuccess(const ServerRepo& new_repo);
+
 private:
     void removeDirentsCache(const QString& repo_id,
                             const QString& path,
@@ -133,6 +143,9 @@ private:
     const Account account_;
 
     QScopedPointer<GetDirentsRequest> get_dirents_req_;
+
+    QScopedPointer<CreateSubrepoRequest> create_subrepo_req_;
+    QScopedPointer<GetRepoRequest> get_repo_req_;
 
     QList<SeafileApiRequest*> reqs_;
 
