@@ -43,6 +43,7 @@ public:
 
     // accessors
     const std::vector<Account>& accounts() const { return accounts_; }
+    std::vector<Account>& accounts() { return accounts_; }
 signals:
     /**
      * Account added/removed/switched.

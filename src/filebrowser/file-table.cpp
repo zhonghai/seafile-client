@@ -296,7 +296,7 @@ void FileTableView::setupContextMenu()
     connect(sync_subdirectory_action_, SIGNAL(triggered()),
             this, SLOT(onSyncSubdirectory()));
     sync_subdirectory_action_->setShortcut(Qt::ALT + Qt::Key_S);
-    if (!seafApplet->isPro()) {
+    if (!parent_->account_.isPro) {
         sync_subdirectory_action_->setEnabled(false);
         sync_subdirectory_action_->setToolTip(tr("This feature is available in pro version only\n"));
     }

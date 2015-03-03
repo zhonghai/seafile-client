@@ -10,14 +10,25 @@ public:
     QUrl serverUrl;
     QString username;
     QString token;
+    bool isPro;
     qint64 lastVisited;
 
-    Account() {}
+    Account() : isPro(false) {}
     Account(QUrl serverUrl, QString username, QString token, qint64 lastVisited=0)
         : serverUrl(serverUrl),
           username(username),
           token(token),
+          isPro(false),
           lastVisited(lastVisited) {}
+
+    Account(const Account &rhs)
+      : serverUrl(rhs.serverUrl),
+        username(rhs.username),
+        token(rhs.token),
+        isPro(rhs.isPro),
+        lastVisited(rhs.lastVisited)
+    {
+    }
 
     bool operator==(const Account& rhs) const {
         return serverUrl == rhs.serverUrl

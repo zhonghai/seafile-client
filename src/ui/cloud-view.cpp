@@ -165,7 +165,7 @@ void CloudView::addActivitiesTab()
         tabs_->adjustTabsWidth(rect().width());
     }
 
-    seafApplet->setPro(true);
+    seafApplet->accountManager()->accounts().front().isPro = true;
 }
 
 void CloudView::setupDropArea()
@@ -445,7 +445,7 @@ void CloudView::onAccountChanged()
 
     account_view_->onAccountChanged();
 
-    seafApplet->setPro(false);
+    seafApplet->accountManager()->accounts().front().isPro = false;
 }
 
 void CloudView::onTabChanged(int index)
